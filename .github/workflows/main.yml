@@ -1,47 +1,39 @@
-name: Build, Deploy to S3 bucket
-
+name: Build React App
 on:
   push:
     branches:
       - main
-
 jobs:
   build:
-    name: react build & deploy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest      
+    strategy:
+      matrix:
+        node-version: [ 16.x ]
 
     steps:
-      - name: checkout Github Action
-        uses: actions/checkout@v3
-
-      - name: Get npm cache directory
-        id: npm-cache-dir
+      - uses: actions/checkout@v1
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+      - name: Create env file
         run: |
-          echo "::set-output name=dir::$(npm config get cache)"
-      - uses: actions/cache@v3
-        id: npm-cache
+          touch .env
+          echo REACT_APP_API_ENDPOINT=${{ secrets.REACT_APP_API_ENDPOINT }} >> .env
+          cat .env
+      - name: Npm Install
+        run: |
+          npm install
+      - name: Npm Build
+        run: |
+          npm run build
+      - name: Deploy to S3
+        uses: jakejarvis/s3-sync-action@master
         with:
-          path: ${{ steps.npm-cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: install npm dependencies
-        run: npm install
-
-      - name: react build
-        run: npm run build
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_S3_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_S3_SECRET_ACCESS_KEY_ID }}
-          aws-region: ap-northeast-2
-
-      - name: Upload to S3
+          args: --acl public-read --delete
         env:
-          BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME}}
-        run: |
-          aws s3 sync \
-            ./build s3://$BUCKET_NAME
+          AWS_S3_BUCKET: ${{ secrets.AWS_STAGING_BUCKET_NAME }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # AWS_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          SOURCE_DIR: "build"
